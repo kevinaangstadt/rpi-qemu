@@ -1,0 +1,65 @@
+#!/usr/bin/expect
+
+set timeout -1
+
+set DIR [lindex $argv 0];
+set IMG [lindex $argv 1];
+
+puts $DIR
+puts $IMG
+
+#Start the guest VM
+spawn qemu-system-aarch64 \
+  -M raspi3b \
+  -append "rw earlyprintk loglevel=8 console=ttyAMA0,115200 dwc_otg.lpm_enable=0 root=/dev/mmcblk0p2 rootdelay=1" \
+  -dtb $DIR/bcm2710-rpi-3-b-plus.dtb \
+  -drive file=$DIR/$IMG,if=sd,format=raw \
+  -kernel $DIR/kernel8.img \
+  -no-reboot \
+  -m 1G \
+  -smp 4 \
+  -serial stdio \
+  -display none \
+  -usb \
+  -device usb-mouse \
+  -device usb-kbd \
+  -device usb-net,netdev=net0 \
+  -netdev user,id=net0,hostfwd=tcp::5555-:22
+
+#Login process
+expect "login: "
+#Enter username
+send "pi\r"
+
+#Enter Password
+expect "Password: "
+send "raspberry\r"
+
+# start ssh
+expect "pi@raspberrypi:~$ "
+send "sudo systemctl enable ssh\r"
+
+# create mount script
+expect "pi@raspberrypi:~$ "
+send "echo \"if grep -qs '/mnt/qemu ' /proc/mounts; then\" > mount.sh\r"
+expect "pi@raspberrypi:~$ "
+send "echo \"    exit 0\" >> mount.sh\r"
+expect "pi@raspberrypi:~$ "
+send "echo \"else\" >> mount.sh\r"
+expect "pi@raspberrypi:~$ "
+send "echo \"    sudo mkdir -p /mnt/qemu\" >> mount.sh\r"
+expect "pi@raspberrypi:~$ "
+send "echo \"    sudo mount -t cifs -o password=\"\",uid=\$(id -u),gid=\$(id -g),forceuid,forcegid, //10.0.2.4/qemu/ /mnt/qemu\" >> mount.sh\r"
+expect "pi@raspberrypi:~$ "
+send "echo \"fi\" >> mount.sh\r"
+expect "pi@raspberrypi:~$ "
+send "chmod +x mount.sh\r"
+expect "pi@raspberrypi:~$ "
+send "echo \"\$HOME/mount.sh\" >> .profile\r"
+expect "pi@raspberrypi:~$ "
+send "cat mount.sh\r"
+
+# shutdown
+expect "pi@raspberrypi:~$ "
+send "sudo shutdown -h now\r"
+expect "reboot: Power down"
